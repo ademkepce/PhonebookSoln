@@ -7,6 +7,52 @@ Bu proje, mikroservis mimarisiyle tasarlanmış bir uygulamadır. Her bir mikros
 dotnet ef migrations add InitialCreate -p PhonebookSoln.Presentation
 dotnet ef database update -p PhonebookSoln.Presentation
 
+## Outbox Design Pattern
+
+Outbox Design Pattern, mikroservisler arasındaki veri tutarsızlıklarını önlemek ve asenkron işlem süreçlerini yönetmek için kullanılan bir desendir. Özellikle bir mikroservisin başka bir mikroservise veri gönderdiği durumlarda, bu verinin kaybolması veya çift işleme gibi sorunları önlemeye yönelik bir yaklaşımdır. Bu projede, Outbox Design Pattern'ı mikroservisler arası güvenli veri iletimi sağlamak için kullanılmıştır.
+
+### **Outbox Design Pattern Kullanımı**
+
+Outbox Design Pattern, bir mikroservisin işlem yaptığı veriyi doğrudan dışa aktarmadan önce, bu veriyi bir "outbox" tablosunda saklamayı içerir. İşlem başarılı olduğunda, mikroservis öncelikle bu veriyi outbox tablosuna kaydeder. Ardından, asenkron bir süreç (örneğin, bir mesaj kuyruğu veya arka planda çalışan bir iş) bu veriyi dış sisteme veya başka bir mikroservise iletir. Bu yaklaşım, verinin doğru bir şekilde dışa aktarıldığından emin olmak için kullanılabilir.
+
+#### **Uygulama Adımları**
+
+1. **Outbox Tablosu**: 
+   - Projeye eklenen bir outbox tablosu, gönderilecek mesajları geçici olarak saklar.
+   - Bu tablo, mesajın gönderilme durumunu (başarılı, başarısız, vb.) takip etmek için kullanılır.
+
+2. **Transaction Management**: 
+   - İşlem yapıldığında (örneğin, bir kişi kaydedildiğinde), bu işlem bir transaction içerisinde gerçekleştirilir. Hem veritabanına veri kaydedilir, hem de outbox tablosuna bir mesaj eklenir.
+   - Transaction'un başarılı bir şekilde tamamlanması durumunda, mesaj dışarıya iletilir.
+
+3. **Asenkron İşlem**: 
+   - Arka planda çalışan bir servis, outbox tablosundaki mesajları belirli aralıklarla kontrol eder.
+   - Mesajlar başarıyla iletildiğinde, outbox tablosundaki durum güncellenir ve mesajlar silinir.
+
+#### **Outbox Tablosu Yapısı**
+
+Outbox tablosu genellikle aşağıdaki gibi bir yapıya sahip olur:
+
+- **Id**: Mesajın benzersiz kimliği
+- **Payload**: Gönderilecek veri
+- **Status**: Mesajın iletilip iletilmediğini belirten durum bilgisi (e.g. Pending, Sent)
+- **CreatedAt**: Mesajın oluşturulma zamanı
+- **SentAt**: Mesajın dışa gönderildiği zaman (Eğer gönderildiyse)
+  
+#### **Kullanım Senaryosu**
+
+- **Kişi Kaydetme**: Kullanıcı yeni bir kişi eklemek için API çağrısı yaptığında, bu işlemle ilgili veriler önce veritabanına kaydedilir ve aynı zamanda outbox tablosuna da bir mesaj eklenir.
+- **Mesaj Gönderimi**: Arka planda çalışan bir servis, outbox tablosunu kontrol ederek mesajı ilgili mikroservise (örneğin RabbitMQ aracılığıyla) gönderir. Mesaj başarılı bir şekilde gönderildiğinde, outbox tablosundaki durum güncellenir ve mesaj silinir.
+  
+Bu desen sayesinde, mikroservisler arası veri iletimi güvenli hale gelir ve bir işlem başarıyla gerçekleşse bile mesaj kaybolmaz veya iki kez iletilmez. Aynı zamanda, veri tutarlılığını sağlamak için işlem ve dışa gönderme süreçleri arasında sıkı bir ilişki kurulur.
+
+#### **Örnek Uygulama: ContactService'de Outbox Kullanımı**
+
+- `ContactService`'te bir kişi ekleme işlemi yapılırken, bu işlemle ilgili veriler önce veritabanına kaydedilir, ardından bir outbox kaydı oluşturulur.
+- Arka planda çalışan bir servis (örneğin bir `OutboxProcessor`), outbox tablosunu belirli aralıklarla kontrol eder. Eğer mesajın durumu "Pending" ise, bu mesaj RabbitMQ üzerinden ilgili mikroservise gönderilir. Mesaj gönderildikten sonra, outbox kaydının durumu güncellenir.
+
+Bu yaklaşım, tüm mikroservislerde veri kayıplarını önlemeye yardımcı olur ve işlemlerin güvenilir bir şekilde gerçekleştirilmesini sağlar.
+
 ## Proje Yapısı
 
 Aşağıda mikroservisler için yapıların genel bir görünümü verilmiştir:
